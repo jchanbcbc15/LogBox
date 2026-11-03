@@ -1,6 +1,6 @@
 # Log Ingestion In A Box
 
-Three private sample logs (syslog, CEF firewall, proxy CSV) are read by **Logstash**, mapped to **ECS 8** with
+Three sample logs (syslog, CEF firewall, proxy CSV) are read by **Logstash**, mapped to **ECS 8** with
 `@timestamp` in UTC (anything that is not ECS goes under `org.metadata.*`), indexed into **Elasticsearch**, and
 viewed in **Kibana**. One **Ansible** playbook deploys everything as Docker containers.
 

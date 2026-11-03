@@ -48,7 +48,7 @@ You need Docker (running, and your user allowed to run `docker`) and `ansible-co
 ```bash
 cd ~/proj/LogIngestion/ansible
 ansible-galaxy collection install -r requirements.yml   # the community.docker collection
-./setup-secrets.sh                                      # creates vault-password.txt and an encrypted vault.yml
+bash setup-secrets.sh                                   # creates vault-password.txt and an encrypted vault.yml
 ```
 
 `setup-secrets.sh` generates four random passwords (Elasticsearch `elastic`, the Logstash writer, the Kibana
@@ -108,6 +108,7 @@ cd ~/proj/LogIngestion/ansible
 ansible-playbook site.yml                                   # everything, samples from ../samples
 ansible-playbook site.yml -e samples_src_dir=/path/to/folder # samples from another folder
 ansible-playbook site.yml -e '{"enabled_sources": ["syslog"]}' # only one source
+ansible-playbook site.yml -e metadata_namespace=acme        # non-ECS fields under acme.metadata.*
 ```
 
 A second run changes nothing (`changed=0`). Running again after a restart re-reads the files and overwrites the

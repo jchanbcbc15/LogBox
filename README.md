@@ -184,13 +184,18 @@ Switching recreates the Elasticsearch, Kibana and Logstash containers; the data 
 `http://localhost:5601` in both modes (loopback only). A browser opening `https://localhost:9200` shows a certificate
 warning because the CA is private; that is expected. No TLS to Redis yet.
 
-### Send a source to Redis instead of Elasticsearch (optional)
+## 6. Send a source to Redis instead of Elasticsearch (optional)
 
 Every source goes to Elasticsearch unless you say otherwise. The same parsed events can go to Redis instead
 (one destination per source, not both). Nothing else in the configuration changes.
 
+If Logstash or the rest of the stack is already running, reset first so this run is not mixed with an earlier
+Elasticsearch ingest, then deploy with Redis as the destination:
+
 ```bash
-cd ~/proj/LogIngestion/ansible
+cd ~/proj/LogIngestion
+python3 demo/demo.py reset --yes
+cd ansible
 # all enabled sources to Redis for this run (here only the proxy)
 ansible-playbook site.yml -e default_destination=redis -e '{"enabled_sources":["proxy"]}'
 # or permanently for one source: add  destination: redis  to its entry in group_vars/all/log_sources.yml
@@ -216,9 +221,9 @@ ansible-playbook site.yml -e default_destination=redis -e redis_external=true -e
 Keys are `logs-<dataset>` (for example `logs-logbox.proxy`) and `logs-rejects`. Redis has no field types and no document
 id, so re-reading a file (a restart) appends the records again; Elasticsearch overwrites them. An old vault file made
 before this feature needs `vault_redis_password` added (`ansible-vault edit group_vars/all/vault.yml`).
-To go back, run the playbook again without `default_destination`.
+To go back, reset again and run the playbook without `default_destination`.
 
-## 6. Tests
+## 7. Tests
 
 The suite needs Elasticsearch up. If a Logstash instance (or the rest of the stack) is already running, reset
 first so this clone's vault and containers match, then start Elasticsearch and Kibana, then run the test:
@@ -266,7 +271,7 @@ finding) or our mapping is wrong (fix it, redeploy), re-run the source (`python3
 safe), then clear the DLQ: `docker rm -f logbox-logstash-<source> && docker volume rm logbox-ls-<source>-data` and run the playbook
 again. Details in `_bmad-output/initiative-log-ingestion-in-a-box/error-handling.md`.
 
-## 7. Tool choices (short version)
+## 8. Tool choices (short version)
 
 | Choice | Why |
 |---|---|
@@ -279,7 +284,7 @@ again. Details in `_bmad-output/initiative-log-ingestion-in-a-box/error-handling
 
 
 
-## 8. Repository layout
+## 9. Repository layout
 
 ```
 ansible/       site.yml, roles (stack_base, elasticsearch, kibana, logstash_instance), group_vars, setup-secrets.sh

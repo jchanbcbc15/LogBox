@@ -10,7 +10,7 @@ sample file --> Logstash (one container per source) --> Elasticsearch --> Kibana
                   reject bad records to logs-rejects        logs-rejects
 ```
 
-The sample files are not provided but most be copied to `samples/`.
+The sample files are not provided but must be copied to `samples/`.
 
 All commands below are run in a WSL/Linux terminal, starting from the repository folder:
 

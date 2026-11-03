@@ -10,7 +10,7 @@ sample file --> Logstash (one container per source) --> Elasticsearch --> Kibana
                   reject bad records to logs-rejects        logs-rejects
 ```
 
-The sample files are **private and are not in this repository** (`samples/` is in `.gitignore`).
+The sample files are not provided but most be copied to `samples/`.
 
 All commands below are run in a WSL/Linux terminal, starting from the repository folder:
 
@@ -40,8 +40,6 @@ format has them) and the collector fields. Details a format carries beyond that 
   rule, threat, geo, file hash and the category/type classification stay as written under `org.metadata.firewall`.
 - **Proxy:** the 13 columns are mapped; the URL is kept whole in `url.original`.
 
-The design that maps the rest exists in `_bmad-output/initiative-log-ingestion-in-a-box/` (mapping documents and
-`simplification-plan-2026-11-01.md`); it was left out of the demo to keep the configuration short.
 
 ## 1. One-time setup
 
@@ -67,19 +65,21 @@ ansible-vault view group_vars/all/vault.yml     # use vault_es_elastic_password;
 
 ## 2. Where the sample logs go
 
-Put the three files in one folder, with these exact names:
+Put the input files in the samples folder (default `samples/` in the repository):
+Then change the file names in two places so they match:
 
-```
-01_syslog_unstructured.log
-03_firewall_cef.log
-04_proxy_export.csv
-```
+1. **`ansible/group_vars/all/log_sources.yml`** — the `file:` field on each source. This is what the
+   playbook copies onto the host and what Logstash actually reads. Set `assumed_year` on syslog (those
+   lines have no year; there is deliberately no default).
+2. **`demo/demo.py`** — the `SOURCES` map (`"file":` next to syslog, firewall, and proxy). The demo
+   script's `check` command looks here, not in the YAML. Skip this if you only run `ansible-playbook`.
 
-The default folder is `~/proj/LogIngestion/samples/`. To keep them somewhere else, pass the folder when you
-run the playbook (see below) or the demo script (`--samples /path/to/folder`).
+- Unstructured syslog → the **syslog** source.
+- Firewall CEF-type logs → the **firewall** source.
+- Proxy CSV → the **proxy** source.
 
-Syslog lines have no year, so the year the logs were written in is set in
-`ansible/group_vars/all/log_sources.yml` (`assumed_year: 2026` for syslog). There is deliberately no default.
+To keep the files somewhere other than `samples/`, pass the folder when you run the playbook
+(`-e samples_src_dir=/path/to/folder`) or the demo script (`--samples /path/to/folder`).
 
 ## 3. Run it
 
@@ -259,23 +259,9 @@ again. Details in `_bmad-output/initiative-log-ingestion-in-a-box/error-handling
 | Docker | same containers on a laptop or a server; versions pinned to one exact tag (8.19.22) |
 | Python standard library for tests and demo | nothing extra to install |
 
-More detail and the decisions behind each choice are in `_bmad-output/initiative-log-ingestion-in-a-box/design-direction.md`.
 
-## 8. How private information is protected
 
-- The sample logs are never committed (`.gitignore`); this repository holds code, configuration and synthetic fixtures.
-- Passwords are random, generated per clone, kept in an encrypted Ansible Vault file that is not committed.
-- Elasticsearch runs with security on; Logstash writes with its own least-privilege user (create/index on `logs-*` only).
-- Published ports are bound to `127.0.0.1`.
-- Credentials found in a record (`password`, `passwd`, `passphrase`, `secret`, `token`, `api_key`, `access_key`
-  as `key=value` or `key: value`, and `Authorization: Bearer`) are replaced with `[REDACTED]` before parsing.
-  Text such as "Failed password for ..." is left alone. `event.original` keeps the unredacted raw line, so it
-  must be treated as sensitive. Identifiers such as users, IPs and host names are not masked, because the logs
-  exist to investigate them.
-- TLS (default on, `es_tls=false` to turn off) protects the Elasticsearch HTTP port. Not done yet: TLS to Redis and to
-  the Kibana page, a Logstash keystore, stricter folder permissions and container hardening.
-
-## 9. Repository layout
+## 8. Repository layout
 
 ```
 ansible/       site.yml, roles (stack_base, elasticsearch, kibana, logstash_instance), group_vars, setup-secrets.sh

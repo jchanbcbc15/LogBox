@@ -1,0 +1,59 @@
+# Redis, only when a source has destination: redis (site.yml). Logstash pushes each event onto a list;
+# the password comes from the vault and is passed as an environment variable, not on the command line.
+# Not published on a host port: look inside with  docker exec -e REDISCLI_AUTH=... logbox-redis redis-cli ...
+- name: Create the Redis data volume
+  community.docker.docker_volume:
+    name: logbox-redis-data
+    state: present
+
+- name: Run Redis
+  community.docker.docker_container:
+    name: "{{ redis_container }}"
+    image: "{{ redis_image }}"
+    state: started
+    restart_policy: unless-stopped
+    cap_drop: [ALL]
+    capabilities: [CHOWN, SETUID, SETGID]   # the image entrypoint starts as root and drops to the redis user
+    security_opts: ["no-new-privileges:true"]
+    memory: "{{ redis_memory }}"
+    memory_swap: "{{ redis_memory }}"
+    pids_limit: 256
+    env:
+      REDIS_PASSWORD: "{{ vault_redis_password }}"
+    # First argument must be redis-server so docker-entrypoint.sh chowns /data and gosu's to
+    # the redis user. A "sh -c …" command skipped that; Redis then ran as root without
+    # DAC_OVERRIDE and could not create appendonlydir on the volume (owned by uid 999).
+    command:
+      - redis-server
+      - --port
+      - "{{ redis_port | string }}"
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "{{ vault_redis_password }}"
+    volumes:
+      - "logbox-redis-data:/data"
+    networks:
+      - name: "{{ docker_network_name }}"
+  no_log: true
+
+# Exec can fail (or return no stdout) while Redis is still starting. Treat that as "not ready"
+# and retry; do not read .stdout unless it exists. no_log is off so until can see the result;
+# the password stays in REDISCLI_AUTH, not on the redis-cli command line.
+- name: Wait until Redis answers
+  community.docker.docker_container_exec:
+    container: "{{ redis_container }}"
+    argv: ["redis-cli", "-p", "{{ redis_port | string }}", "ping"]
+    env:
+      REDISCLI_AUTH: "{{ vault_redis_password }}"
+  register: redis_ping
+  failed_when: false
+  until: redis_ping.rc | default(1) | int == 0 and "PONG" in (redis_ping.stdout | default(""))
+  retries: 20
+  delay: 2
+  changed_when: false
+
+- name: Fail if Redis did not answer
+  ansible.builtin.fail:
+    msg: Redis did not respond with PONG. {{ redis_ping.msg | default(redis_ping.stderr | default('')) }}
+  when: redis_ping.rc | default(1) | int != 0 or "PONG" not in (redis_ping.stdout | default(""))

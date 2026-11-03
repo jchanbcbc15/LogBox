@@ -1,0 +1,14 @@
+# Written by Ansible. Settings per source come from log_sources.yml.
+http.host: "0.0.0.0"
+# One worker by default: enough for the demo files and cheaper in RAM (Logstash's own default is
+# one worker per CPU). Raise `workers` per source when filters are the bottleneck (spec §5.5).
+# The file input still reads on one thread. Occurrence counting is lock-protected, so _id stays unique.
+pipeline.workers: {{ src.workers | default(1) }}
+pipeline.batch.size: {{ src.batch_size | default(125) }}
+pipeline.batch.delay: {{ src.batch_delay | default(50) }}
+# No automatic reload: a config change is a deliberate container restart, never a surprise.
+config.reload.automatic: false
+# Dead letter queue: where Logstash puts an event Elasticsearch refuses (for example a mapping
+# conflict). The functional test expects it to stay empty; if it does not, the file shows why.
+dead_letter_queue.enable: true
+dead_letter_queue.max_bytes: 64mb

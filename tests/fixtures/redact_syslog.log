@@ -1,0 +1,4 @@
+Oct 14 12:00:01 redact01 app[1]: login ok password=hunter2 token=abc123 user=zed
+Oct 14 12:00:02 redact01 app[2]: Failed password for invalid user admin from 192.0.2.1 port 22 ssh2
+Oct 14 12:00:03 redact01 app[3]: Authorization: Bearer eyJhbGciOi.payload.sig and API_KEY=K-123;secret: s3cr3t,next
+Oct 14 12:00:04 redact01 app[4]: PWD=/home/x invalid token, Token refresh failed, 3 incorrect password attempts, xtoken=keep passphrase="two words"

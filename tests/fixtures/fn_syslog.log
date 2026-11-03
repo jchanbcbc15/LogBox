@@ -1,0 +1,6 @@
+Oct 14 12:00:01 fnhost app[1]: login ok password=hunter2 token=abc123 user=zed
+Oct 14 12:00:02 fnhost app[2]: Failed password for invalid user admin from 192.0.2.1 port 22 ssh2
+Oct 14 12:00:03 fnhost app[3]: the same record twice
+Oct 14 12:00:03 fnhost app[3]: the same record twice
+Feb 30 12:00:05 fnhost app[5]: impossible date, rejected
+Oct 14 12:00:06 fnhost app[6]: record after the broken one

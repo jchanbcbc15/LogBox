@@ -1,0 +1,11 @@
+# Optional demo instance: two synthetic syslog lines (one password, one session token) so the redaction can be
+# shown in Kibana. Not part of the real samples. Used with:
+#   ansible-playbook site.yml -e @../demo/redaction-demo.yml
+# (the real sources are unaffected; the lines arrive in logs-logbox.syslog with agent.name logstash-redaction-demo)
+extra_log_sources:
+  - name: redaction-demo
+    source: syslog
+    dir: "{{ logbox_repo_root }}/demo"
+    file: redaction-demo.log
+    assumed_year: 2026
+    heap: 256m

@@ -1,0 +1,23 @@
+# One Logstash container is created for each entry. Fields:
+#   name             instance name (container logbox-logstash-<name>, agent.name logstash-<name>)
+#   source           folder under logstash/sources/ with the source's two config files (default: name)
+#   file             file name in the samples folder on the controller; copied to the target host
+#   dir              folder holding that file on the controller (default: the samples folder)
+#   assumed_year     REQUIRED for syslog (RFC3164 has no year); never defaulted
+#   source_timezone  zone of the source's clock, default UTC
+#   workers          pipeline.workers, default 1 (raise for filter throughput on a large file)
+#   batch_size       pipeline.batch.size, default 125 (events per worker batch)
+#   batch_delay      pipeline.batch.delay in ms, default 50 (how long a partial batch waits)
+#   heap             Logstash JVM heap, default 512m (container RAM cap follows: 2*heap + 512m)
+#   destination      elasticsearch (default) or redis: where this source's events go (all or nothing per
+#                    source, no copy to both). Overrides default_destination.
+log_sources:
+  - name: syslog
+    file: 01_syslog_unstructured.log
+    assumed_year: 2026
+    source_timezone: UTC
+  - name: firewall
+    file: 03_firewall_cef.log
+    source_timezone: UTC
+  - name: proxy
+    file: 04_proxy_export.csv

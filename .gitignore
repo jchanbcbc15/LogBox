@@ -1,0 +1,24 @@
+# Real log data is private (public repo, constraint C7)
+samples/
+# Secrets and local run state
+__pycache__/
+*.pyc
+.env
+**/.env
+vault-password*
+*.pem
+*.key
+tracer/run/
+tracer/.env
+.v6-v7-migration-backup-*/
+
+# The real vault is generated per clone by ansible/setup-secrets.sh (only vault.yml.example is committed)
+ansible/group_vars/all/vault.yml
+demo/ansible-last-run.log
+
+# BMad process files and tool state stay local (decision 2026-11-02): they hold the decision history and
+# some values taken from the private samples.
+_bmad/
+_bmad-output/
+.agents/
+skills-lock.json

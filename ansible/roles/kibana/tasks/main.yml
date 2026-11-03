@@ -1,0 +1,46 @@
+- name: Run Kibana
+  community.docker.docker_container:
+    name: logbox-kibana
+    image: "{{ kibana_image }}"
+    state: started
+    restart_policy: unless-stopped
+    cap_drop: [ALL]
+    security_opts: ["no-new-privileges:true"]
+    memory: "{{ kibana_memory }}"
+    memory_swap: "{{ kibana_memory }}"
+    pids_limit: 2048
+    env: "{{ kibana_env | combine(kibana_env_tls if es_tls | bool else {}) }}"
+    volumes: "{{ ['logbox-certs-ca-public:/usr/share/kibana/config/certs:ro'] if es_tls | bool else [] }}"
+    published_ports:
+      - "{{ kibana_bind }}:{{ kibana_port }}:5601"
+    networks:
+      - name: "{{ docker_network_name }}"
+  vars:
+    kibana_env:
+      SERVER_NAME: kibana
+      SERVER_HOST: "0.0.0.0"
+      ELASTICSEARCH_HOSTS: "{{ es_internal_url }}"
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: "{{ vault_kibana_system_password }}"
+    # Kibana verifies Elasticsearch's certificate against our CA (the CA certificate only, never a key).
+    kibana_env_tls:
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /usr/share/kibana/config/certs/ca.crt
+  no_log: true
+
+- name: Wait until Kibana is available
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kibana_port }}/api/status"
+    url_username: elastic
+    url_password: "{{ vault_es_elastic_password }}"
+    force_basic_auth: true
+    status_code: 200
+    return_content: true
+  register: kibana_status
+  until: kibana_status.status == 200 and kibana_status.json.status.overall.level == 'available'
+  retries: 60
+  delay: 5
+  changed_when: false
+  no_log: true
+
+- name: Create the Kibana data views and defaults
+  ansible.builtin.include_tasks: data_views.yml

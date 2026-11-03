@@ -1,0 +1,105 @@
+# data_views.yml — create the Kibana Discover data views (saved index patterns) so a fresh
+# deployment opens with data visible and nothing to click together by hand.
+#
+# Without this file, Kibana still runs and the indices still exist; Discover would have no
+# saved views until someone created them in the UI.
+#
+# Views (list is kibana_data_views in defaults/main.yml; one extra per log_sources entry):
+#   logbox-logs-all       logs-logbox.*          all sources (this is the default view)
+#   logbox-logs-syslog    logs-logbox.syslog
+#   logbox-logs-firewall  logs-logbox.firewall
+#   logbox-logs-proxy     logs-logbox.proxy
+#   logbox-rejects        logs-rejects
+#
+# This file also sets Discover's default time window to now-5y (sample records are not in
+# the last 15 minutes). Calls use the elastic user. A view is written only when it is
+# missing or differs (R14).
+- name: Set up the Kibana data views
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: elastic
+      url_password: "{{ vault_es_elastic_password }}"
+      force_basic_auth: true
+      headers:
+        kbn-xsrf: logbox-playbook
+  no_log: true
+  block:
+    - name: Read each data view
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/data_views/data_view/{{ dv.id }}"
+        status_code: [200, 404]
+        return_content: true
+      register: dv_current
+      changed_when: false
+      loop: "{{ kibana_data_views }}"
+      loop_control: { loop_var: dv, label: "{{ dv.id }}" }
+
+    - name: Create the missing data views
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/data_views/data_view"
+        method: POST
+        body_format: json
+        body:
+          data_view: { id: "{{ dv.id }}", name: "{{ dv.name }}", title: "{{ dv.title }}", timeFieldName: "{{ dv.time_field }}" }
+        status_code: 200
+      changed_when: true
+      when: item.status == 404
+      loop: "{{ dv_current.results }}"
+      loop_control: { label: "{{ item.dv.id }}" }
+      vars:
+        dv: "{{ item.dv }}"
+
+    - name: Update the data views that differ
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/data_views/data_view/{{ dv.id }}"
+        method: POST
+        body_format: json
+        body:
+          data_view: { name: "{{ dv.name }}", title: "{{ dv.title }}", timeFieldName: "{{ dv.time_field }}" }
+        status_code: 200
+      changed_when: true
+      when: >-
+        item.status == 200 and
+        (item.json.data_view.name != dv.name or item.json.data_view.title != dv.title
+         or item.json.data_view.timeFieldName != dv.time_field)
+      loop: "{{ dv_current.results }}"
+      loop_control: { label: "{{ item.dv.id }}" }
+      vars:
+        dv: "{{ item.dv }}"
+
+    - name: Read the default data view
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/data_views/default"
+        return_content: true
+      register: dv_default
+      changed_when: false
+
+    - name: Make the all-sources view the default
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/data_views/default"
+        method: POST
+        body_format: json
+        body: { data_view_id: "{{ kibana_default_data_view }}", force: true }
+        status_code: 200
+      changed_when: true
+      when: dv_default.json.data_view_id | default('') != kibana_default_data_view
+
+    - name: Read the Kibana settings
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/kibana/settings"
+        return_content: true
+      register: kb_settings
+      changed_when: false
+
+    - name: Set the default Discover time window
+      ansible.builtin.uri:
+        url: "{{ kibana_url }}/api/kibana/settings"
+        method: POST
+        body_format: json
+        body:
+          changes: { "timepicker:timeDefaults": "{{ kibana_default_time_range | to_json }}" }
+        status_code: 200
+      changed_when: true
+      when: >-
+        (kb_settings.json.settings['timepicker:timeDefaults'].userValue | default('') | from_json
+         if kb_settings.json.settings['timepicker:timeDefaults'] is defined else {}) != kibana_default_time_range

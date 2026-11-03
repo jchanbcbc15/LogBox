@@ -1,0 +1,102 @@
+# ---- Settings that apply to the whole stack. Per-source settings are in log_sources.yml.
+# Secrets are NOT here: they are in vault.yml (encrypted with Ansible Vault).
+
+# One exact version for Elasticsearch, Logstash and Kibana (decision: pinned tags, same patch version,
+# never "latest").
+elastic_version: "8.19.22"
+elasticsearch_image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_version }}"
+kibana_image: "docker.elastic.co/kibana/kibana:{{ elastic_version }}"
+logstash_image: "docker.elastic.co/logstash/logstash:{{ elastic_version }}"
+
+# Where the playbook keeps its files on the target host (configs, copies of the sample files).
+# Default: a folder in the connecting user's home directory.
+logbox_base_dir: "{{ ansible_facts['env']['HOME'] }}/logbox"
+
+# Repository root and the folder holding the three sample files on the CONTROLLER (never in Git).
+logbox_repo_root: "{{ playbook_dir }}/.."
+samples_src_dir: "{{ logbox_repo_root }}/samples"
+
+docker_network_name: logbox-net
+
+# ---- Namespace for fields that do not fit ECS (requirement: a CONFIGURABLE <org>.metadata.*).
+# Default "org". Override for a run or in this file:   ansible-playbook site.yml -e metadata_namespace=acme
+# It is applied in one place in Logstash (shared/88-namespace.conf, via the METADATA_NS variable) and in the
+# Elasticsearch index templates (rendered with this value). Changing it on a stack that already holds data
+# leaves the old documents with the old name: delete the logs-* indices and re-ingest (the ids make that safe).
+metadata_namespace: org
+
+# ---- Where the parsed events go (R7). "elasticsearch" is the default; "redis" sends the same events to a
+# Redis list instead. Set it for one run on the command line, for all enabled sources:
+#   ansible-playbook site.yml -e default_destination=redis
+# or for one source, with `destination: redis` in its log_sources entry (that wins over this default).
+default_destination: elasticsearch
+# One exact Redis version, same rule as the Elastic images. Redis is deployed only when at least one
+# enabled source routes to it. It is NOT published on a host port: reach it with docker exec.
+redis_image: "redis:7.4.2-alpine"
+redis_container: logbox-redis
+# Where Logstash sends events when a source uses redis. The defaults point at the Redis container this
+# playbook starts, so the demo works with nothing set. To use a Redis that already exists elsewhere,
+# set redis_external: true plus its host and port; the playbook then does not start its own Redis.
+# The password is still vault_redis_password. (No TLS to Redis yet.)
+redis_external: false
+redis_host: "{{ redis_container }}"
+redis_port: 6379
+all_destinations: "{{ all_log_sources | map(attribute='destination', default=default_destination) | list | unique }}"
+redis_enabled: "{{ 'redis' in all_destinations }}"
+redis_deploy: "{{ redis_enabled and not redis_external }}"
+
+# Published ports are bound to 127.0.0.1 only (decision, security table).
+elasticsearch_port: 9200
+kibana_port: 5601
+# Address Kibana is published on. Keep 127.0.0.1 (WSL forwards it to Windows localhost). Only if that
+# forwarding does not work, set 0.0.0.0, which makes Kibana reachable from the network.
+kibana_bind: "127.0.0.1"
+elasticsearch_heap: 512m
+
+# ---- Container limits (hardening). Memory is a hard cap: a container that goes over it is stopped by the
+# kernel, so each value is the Java heap plus generous room for off-heap memory. Measured while idle after
+# the three samples were loaded: Elasticsearch 1.95 GB, Kibana 0.66 GB, each Logstash 0.93 GB (512m heap).
+# Logstash gets twice its heap plus 512 MB (512m heap -> 1536m; the 256m test fixtures -> 1024m).
+es_memory: 3g
+kibana_memory: 2g
+redis_memory: 256m
+
+# ---- TLS on the Elasticsearch HTTP port (R-security). ON by default; one switch.
+#   es_tls: true   Elasticsearch speaks HTTPS with a certificate from a private CA the playbook creates (role
+#                  "tls"); Logstash, Kibana and the playbook's own calls trust that CA and use https.
+#   es_tls: false  plain http, authentication still on. Use it if TLS gets in the way during a demo:
+#                      ansible-playbook site.yml -e es_tls=false
+# Switching recreates the Elasticsearch, Kibana and Logstash containers (the data stays). Kibana's own web
+# page stays on http://localhost:5601 in both modes (loopback only; TLS to the browser is a later step).
+es_tls: true
+es_scheme: "{{ 'https' if es_tls | bool else 'http' }}"
+# Names and addresses the Elasticsearch certificate is valid for. Add the host's name here if Elasticsearch
+# is reached by another name (a changed list makes the playbook issue a new certificate from the same CA).
+es_tls_dns: [elasticsearch, localhost]
+es_tls_ips: ["127.0.0.1"]
+# Public CA certificate on the target host: for curl, the demo script, the functional test, the playbook.
+es_certs_dir: "{{ logbox_base_dir }}/certs"
+es_ca_file: "{{ es_certs_dir }}/ca.crt"
+
+# URL used by the playbook itself on the target host, and URL used by containers on the Docker network.
+es_url: "{{ es_scheme }}://127.0.0.1:{{ elasticsearch_port }}"
+es_internal_url: "{{ es_scheme }}://elasticsearch:9200"
+
+# Logstash writes with its own least-privilege user, not "elastic" (decision).
+logstash_writer_user: logbox_logstash_writer
+logstash_writer_role: logbox_logstash_writer
+
+# Extra sources added on top of log_sources for one run (the functional test uses this with
+# tests/fixture_sources.yml). Empty in normal use.
+extra_log_sources: []
+
+# Which entries of log_sources this run deploys (by name). Default: all of them. The demo script runs
+# the playbook once per sample with a single name, so each sample can be shown end to end:
+#   ansible-playbook site.yml -e '{"enabled_sources": ["syslog"]}'
+# Entries left out are neither required on disk nor touched (a container that already exists stays).
+# The Kibana data views are still created for every entry of log_sources.
+enabled_sources: "{{ log_sources | map(attribute='name') | list }}"
+all_log_sources: "{{ (log_sources | selectattr('name', 'in', enabled_sources) | list) + extra_log_sources }}"
+
+# Sources whose time has no year need an operator-set assumed_year (no default, design rule 5).
+sources_requiring_year: [syslog]

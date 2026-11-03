@@ -1,0 +1,57 @@
+{
+  "index_patterns": ["logs-logbox.*"],
+  "priority": 500,
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "dynamic": true,
+      "dynamic_templates": [
+        { "metadata_strings": {
+            "path_match": "{{ metadata_namespace }}.metadata.*",
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 } } }
+      ],
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message":    { "type": "match_only_text" },
+        "tags":       { "type": "keyword" },
+        "agent":   { "properties": { "name": { "type": "keyword" } } },
+        "host":    { "properties": { "name": { "type": "keyword" } } },
+        "event": { "properties": {
+          "id": { "type": "keyword" }, "dataset": { "type": "keyword" }, "kind": { "type": "keyword" },
+          "original": { "type": "keyword", "index": false, "doc_values": false },
+          "created": { "type": "date" }, "timezone": { "type": "keyword" },
+          "action": { "type": "keyword" }, "outcome": { "type": "keyword" },
+          "category": { "type": "keyword" }, "type": { "type": "keyword" },
+          "code": { "type": "keyword" }, "reason": { "type": "wildcard" } } },
+        "user_agent": { "properties": { "original": { "type": "keyword" } } },
+        "process": { "properties": { "name": { "type": "keyword" }, "pid": { "type": "long" } } },
+        "user": { "properties": {
+          "name": { "type": "keyword" }, "full_name": { "type": "keyword" } } },
+        "source":      { "properties": { "ip": { "type": "ip" }, "port": { "type": "long" }, "bytes": { "type": "long" },
+                          "user": { "properties": { "name": { "type": "keyword" } } } } },
+        "destination": { "properties": { "ip": { "type": "ip" }, "port": { "type": "long" }, "bytes": { "type": "long" } } },
+        "client":      { "properties": { "ip": { "type": "ip" } } },
+        "network":     { "properties": { "transport": { "type": "keyword" } } },
+        "observer":    { "properties": { "hostname": { "type": "keyword" }, "vendor": { "type": "keyword" }, "product": { "type": "keyword" },
+                          "version": { "type": "keyword" }, "type": { "type": "keyword" } } },
+        "url":  { "properties": { "original": { "type": "wildcard" } } },
+        "http": { "properties": {
+                   "request": { "properties": { "method": { "type": "keyword" }, "referrer": { "type": "keyword" } } },
+                   "response": { "properties": { "status_code": { "type": "long", "ignore_malformed": true } } } } },
+        "file": { "properties": { "path": { "type": "keyword" }, "name": { "type": "keyword" } } },
+        "log": { "properties": {
+          "file": { "properties": { "path": { "type": "keyword" } } },
+          "syslog": { "properties": {
+            "priority": { "type": "long" }, "version": { "type": "keyword" }, "msgid": { "type": "keyword" },
+            "facility": { "properties": { "code": { "type": "long" }, "name": { "type": "keyword" } } },
+            "severity": { "properties": { "code": { "type": "long" }, "name": { "type": "keyword" } } },
+            "structured_data": { "type": "flattened" } } } } },
+        "related": { "properties": { "ip": { "type": "ip" }, "user": { "type": "keyword" }, "hosts": { "type": "keyword" }, "hash": { "type": "keyword" } } },
+        "{{ metadata_namespace }}": { "properties": { "metadata": { "properties": {
+          "pipeline": { "properties": { "host": { "type": "keyword" }, "timestamp_basis": { "type": "keyword" } } },
+          "proxy": { "properties": { "bytes_sent": { "type": "long", "ignore_malformed": true } } } } } } }
+      }
+    }
+  }
+}

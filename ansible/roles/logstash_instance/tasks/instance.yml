@@ -1,0 +1,179 @@
+# instance.yml — deploy one Logstash container for one log_sources entry.
+#
+# main.yml includes this file once per source and sets src to that entry (name, sample
+# file, assumed_year, heap, destination, …).
+#
+# This file:
+#   copies shared and source pipeline .conf files into one directory (Logstash reads
+#     that directory in filename order)
+#   copies the private sample onto the target
+#   renders templates/logstash.yml.j2 onto the target as that instance's Logstash
+#     process settings (workers, batch, dead-letter queue); not the pipeline .conf files
+#   runs logstash --config.test_and_exit in a throwaway container
+#   starts (or restarts) logbox-logstash-<name> only when those inputs changed
+#
+# The container mounts the CA certificate only (never a key) so it can verify
+# Elasticsearch. A second playbook run with the same inputs reports changed=0.
+- name: "{{ src.name }}: work out names and paths"
+  ansible.builtin.set_fact:
+    ls_name: "{{ src.name }}"
+    # memory cap: twice the Java heap plus 512 MB (the JVM also uses memory outside its heap)
+    ls_memory: "{{ ((src.heap | default('512m')) | regex_replace('m$', '') | int * 2 + 512) }}m"
+    ls_source_dir: "{{ logbox_repo_root }}/logstash/sources/{{ src.source | default(src.name) }}"
+    ls_pipeline_dir: "{{ logbox_base_dir }}/pipeline/{{ src.name }}"
+    ls_config_dir: "{{ logbox_base_dir }}/config/{{ src.name }}"
+    ls_volumes:
+      - "{{ logbox_base_dir }}/pipeline/{{ src.name }}:/usr/share/logstash/pipeline:ro"
+      - "{{ logbox_base_dir }}/config/{{ src.name }}/logstash.yml:/usr/share/logstash/config/logstash.yml:ro"
+      - "{{ logbox_base_dir }}/data:/data:ro"
+    # The public CA certificate only (never a key), so Logstash can verify Elasticsearch.
+    # Always mounted (see 90-output.conf): the file must exist even when es_tls is false.
+    ls_tls_volumes: ["logbox-certs-ca-public:/certs:ro"]
+
+- name: "{{ ls_name }}: create its folders"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: ["{{ ls_pipeline_dir }}", "{{ ls_config_dir }}"]
+
+# Logstash joins the .conf files of ONE directory in filename order (10, 20, 22, 25, 30, ...). The
+# shared files and the source's own files must therefore be copied into the same directory; two
+# mounted folders would run one after the other instead of interleaving (verified in the tracer).
+- name: "{{ ls_name }}: copy the shared pipeline files"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ ls_pipeline_dir }}/{{ item | basename }}"
+    mode: "0644"
+  loop: "{{ query('ansible.builtin.fileglob', logstash_shared_glob) | sort }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  register: shared_copy
+
+- name: "{{ ls_name }}: copy the source's own pipeline files"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ ls_pipeline_dir }}/{{ item | basename }}"
+    mode: "0644"
+  loop: "{{ query('ansible.builtin.fileglob', ls_source_dir ~ '/*.conf') | sort }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  register: source_copy
+
+- name: "{{ ls_name }}: find pipeline files that are no longer wanted"
+  ansible.builtin.find:
+    paths: "{{ ls_pipeline_dir }}"
+    patterns: "*.conf"
+  register: existing_conf
+
+- name: "{{ ls_name }}: remove them"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ existing_conf.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: >-
+    (item.path | basename) not in
+    ((query('ansible.builtin.fileglob', logstash_shared_glob) + query('ansible.builtin.fileglob', ls_source_dir ~ '/*.conf')) | map('basename') | list)
+  register: stale_removed
+
+- name: "{{ ls_name }}: write its logstash.yml"
+  ansible.builtin.template:
+    src: logstash.yml.j2
+    dest: "{{ ls_config_dir }}/logstash.yml"
+    mode: "0644"
+  register: settings_copy
+
+# The sample is private and is not in the repository: it is copied from the controller.
+- name: "{{ ls_name }}: copy its sample file to the target"
+  ansible.builtin.copy:
+    src: "{{ src.dir | default(samples_src_dir) }}/{{ src.file }}"
+    dest: "{{ logbox_base_dir }}/data/{{ src.file }}"
+    mode: "0644"
+  register: data_copy
+
+- name: "{{ ls_name }}: create its data volume (holds the dead letter queue)"
+  community.docker.docker_volume:
+    name: "logbox-ls-{{ ls_name }}-data"
+    state: present
+
+# Fail fast on a broken pipeline: run the same image against the same files with --config.test_and_exit
+# BEFORE the real container is started or restarted. A syntax or plugin-setting mistake then stops the
+# play with Logstash's own message, instead of leaving a container that restarts in a loop while the
+# play reports success. It runs every time (not only when a file changed): if it only ran after a change,
+# a failed run would leave the broken files in place and the next run would start them untested.
+# It never reports "changed" (R14) and never touches Elasticsearch or the input file.
+- name: "{{ ls_name }}: test the pipeline configuration (logstash --config.test_and_exit)"
+  community.docker.docker_container:
+    name: "logbox-logstash-{{ ls_name }}-configtest"
+    image: "{{ logstash_image }}"
+    command: ["--config.test_and_exit"]
+    detach: false
+    cleanup: true
+    output_logs: true
+    env:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m"
+      LOGSTASH_INSTANCE: "logstash-{{ ls_name }}"
+      PIPELINE_HOST: "{{ inventory_hostname }}"
+      ES_URL: "{{ es_internal_url }}"
+      ES_SSL: "{{ es_tls | bool | lower }}"
+      METADATA_NS: "{{ metadata_namespace }}"
+      ES_USER: "{{ logstash_writer_user }}"
+      ES_PASSWORD: "{{ vault_logstash_writer_password }}"
+      INPUT_PATH: "/data/{{ src.file }}"
+      SOURCE_TIMEZONE: "{{ src.source_timezone | default('UTC') }}"
+      ASSUMED_YEAR: "{{ src.assumed_year | default('') | string }}"
+      DESTINATION: "{{ src.destination | default(default_destination) }}"
+      REDIS_HOST: "{{ redis_host }}"
+      REDIS_PORT: "{{ redis_port | string }}"
+      REDIS_PASSWORD: "{{ vault_redis_password | default('') }}"
+    volumes: "{{ ls_volumes + ls_tls_volumes }}"
+  register: ls_config_test
+  changed_when: false
+  failed_when: false   # the next task turns a non-zero exit into a short, readable failure
+  no_log: true
+
+- name: "{{ ls_name }}: report a configuration error"
+  ansible.builtin.fail:
+    msg: |-
+      The Logstash pipeline for '{{ ls_name }}' did not pass logstash --config.test_and_exit.
+      Nothing was started or restarted for this source. Logstash said:
+      {{ ls_config_test.msg | default('') }}{{ (ls_config_test.container.Output | default('')) | regex_findall('(?m)^.*(?:ERROR|Expected one of|Error:|Exception|Cannot|invalid).*$') | map('trim') | join(' | ') }}
+  when: ls_config_test.status | default(1) | int != 0
+
+# A restart makes Logstash read the input file again from the top (sincedb is /dev/null). That is safe:
+# the document ids are fixed, so a second read overwrites the same documents. It is restarted only
+# when something it reads has changed, so a second playbook run changes nothing.
+- name: "{{ ls_name }}: run Logstash"
+  community.docker.docker_container:
+    name: "logbox-logstash-{{ ls_name }}"
+    image: "{{ logstash_image }}"
+    state: started
+    restart_policy: unless-stopped
+    cap_drop: [ALL]
+    security_opts: ["no-new-privileges:true"]
+    memory: "{{ ls_memory }}"
+    memory_swap: "{{ ls_memory }}"
+    pids_limit: 2048
+    restart: "{{ shared_copy is changed or source_copy is changed or stale_removed is changed or settings_copy is changed or data_copy is changed }}"
+    env:
+      LS_JAVA_OPTS: "-Xms{{ src.heap | default('512m') }} -Xmx{{ src.heap | default('512m') }}"
+      LOGSTASH_INSTANCE: "logstash-{{ ls_name }}"
+      PIPELINE_HOST: "{{ inventory_hostname }}"
+      ES_URL: "{{ es_internal_url }}"
+      ES_SSL: "{{ es_tls | bool | lower }}"
+      METADATA_NS: "{{ metadata_namespace }}"
+      ES_USER: "{{ logstash_writer_user }}"
+      ES_PASSWORD: "{{ vault_logstash_writer_password }}"
+      INPUT_PATH: "/data/{{ src.file }}"
+      SOURCE_TIMEZONE: "{{ src.source_timezone | default('UTC') }}"
+      ASSUMED_YEAR: "{{ src.assumed_year | default('') | string }}"
+      DESTINATION: "{{ src.destination | default(default_destination) }}"
+      REDIS_HOST: "{{ redis_host }}"
+      REDIS_PORT: "{{ redis_port | string }}"
+      REDIS_PASSWORD: "{{ vault_redis_password | default('') }}"
+    volumes: "{{ ls_volumes + ['logbox-ls-' ~ ls_name ~ '-data:/usr/share/logstash/data'] + ls_tls_volumes }}"
+    networks:
+      - name: "{{ docker_network_name }}"
+  no_log: true

@@ -1,0 +1,109 @@
+# Checks that must pass before anything is changed, then the folders and the Docker network.
+- name: Check the metadata namespace
+  ansible.builtin.assert:
+    that:
+      - metadata_namespace is match('^[a-z][a-z0-9_]{1,30}$')
+      - metadata_namespace not in ecs_top_level_names
+    fail_msg: >-
+      metadata_namespace '{{ metadata_namespace }}' is not allowed. Use 2 to 31 characters: lower-case letters,
+      digits and underscores, starting with a letter, and not an ECS top-level name (such as event, host or user),
+      because the non-ECS fields are moved under that name.
+    quiet: true
+  vars:
+    ecs_top_level_names: [agent, as, base, client, cloud, code_signature, container, data_stream, destination, device,
+      dll, dns, ecs, email, error, event, faas, file, group, host, http, interface, labels, log, message, network,
+      observer, orchestrator, organization, os, package, pe, process, registry, related, risk, rule, server,
+      service, source, tags, threat, tls, tracing, url, user, user_agent, volume, vlan, vulnerability, '@timestamp']
+
+- name: Check the TLS switch
+  ansible.builtin.assert:
+    that: es_tls | bool in [true, false]
+    fail_msg: "es_tls must be true (default, HTTPS) or false (plain http). Example: -e es_tls=false"
+    quiet: true
+
+- name: Check that every log source is described completely
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.file is defined
+      - (item.source | default(item.name)) not in sources_requiring_year or item.assumed_year is defined
+    fail_msg: >-
+      log_sources entry '{{ item.name | default('?') }}' is incomplete. Every entry needs name and file;
+      a syslog source also needs assumed_year (there is deliberately no default: a wrong year would
+      silently overwrite documents).
+    quiet: true
+  loop: "{{ all_log_sources }}"
+  loop_control:
+    label: "{{ item.name | default('?') }}"
+
+- name: Check the Redis address
+  ansible.builtin.assert:
+    that:
+      - redis_port | int > 0 and redis_port | int < 65536
+      - redis_host | length > 0
+    fail_msg: "redis_host must be set and redis_port must be 1 to 65535."
+    quiet: true
+  when: redis_enabled | bool
+
+- name: Check that every destination is one we support
+  ansible.builtin.assert:
+    that: (item.destination | default(default_destination)) in ['elasticsearch', 'redis']
+    fail_msg: >-
+      log_sources entry '{{ item.name }}' has destination '{{ item.destination | default(default_destination) }}'.
+      Supported values: elasticsearch (default), redis.
+    quiet: true
+  loop: "{{ all_log_sources }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Check that the Redis password exists in the vault when Redis is used
+  ansible.builtin.assert:
+    that: vault_redis_password is defined
+    fail_msg: "A source routes to Redis but vault_redis_password is missing. Run ./setup-secrets.sh (it adds it) or: ansible-vault edit group_vars/all/vault.yml"
+    quiet: true
+  when: redis_enabled | bool
+
+- name: Check that the secrets exist in the vault
+  ansible.builtin.assert:
+    that:
+      - vault_es_elastic_password is defined
+      - vault_logstash_writer_password is defined
+      - vault_kibana_system_password is defined
+    fail_msg: "A password is missing. Edit it with: ansible-vault edit group_vars/all/vault.yml"
+    quiet: true
+
+- name: Check that each sample file is on the controller
+  ansible.builtin.stat:
+    path: "{{ item.dir | default(samples_src_dir) }}/{{ item.file }}"
+  delegate_to: localhost
+  become: false
+  register: sample_stat
+  loop: "{{ all_log_sources }}"
+  loop_control:
+    label: "{{ item.file }}"
+
+- name: Stop with a clear message if a sample file is missing
+  ansible.builtin.fail:
+    msg: >-
+      {{ item.item.file }} is not in {{ item.item.dir | default(samples_src_dir) }}. The sample logs are private and are not
+      in the repository: copy them there (see the README).
+  when: not item.stat.exists
+  loop: "{{ sample_stat.results }}"
+  loop_control:
+    label: "{{ item.item.file }}"
+
+- name: Create the working folders on the target
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ logbox_base_dir }}"
+    - "{{ logbox_base_dir }}/data"
+    - "{{ logbox_base_dir }}/pipeline"
+    - "{{ logbox_base_dir }}/config"
+
+- name: Create the Docker network
+  community.docker.docker_network:
+    name: "{{ docker_network_name }}"
+    state: present

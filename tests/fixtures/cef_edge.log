@@ -1,0 +1,10 @@
+this line is not CEF at all
+Oct 14 10:00:00 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-ALLOW|Session allowed|1|dvchost=fw-edge01.example.edu src=10.0.0.1 dst=10.0.0.2 dpt=443 proto=TCP act=allow
+Oct 14 10:00:00 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-ALLOW|Session allowed|1|rt=yesterday dvchost=fw-edge01.example.edu src=10.0.0.1 dst=10.0.0.2
+Oct 14 10:00:00 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-ALLOW|Session allowed|1|rt=Feb 30 2026 10:00:00 dvchost=fw-edge01.example.edu src=10.0.0.1 dst=10.0.0.2
+Oct 14 10:00:01 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-DENY|Session denied by policy|3|rt=1791972001000 dvchost=fw-edge01.example.edu src=10.0.0.9 spt=1000 dst=10.0.0.2 dpt=22 proto=TCP act=deny cs1Label=Rule cs1=Block-SSH in=1 out=2
+Oct 14 10:00:01 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-DENY|Session denied by policy|3|rt=1791972001000 dvchost=fw-edge01.example.edu src=10.0.0.9 spt=1000 dst=10.0.0.2 dpt=22 proto=TCP act=deny cs1Label=Rule cs1=Block-SSH in=1 out=2
+Oct 14 10:00:02 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|NEW-9|Something the table does not know|Low|rt=1791972002000 dvchost=fw-edge01.example.edu src=10.0.0.3 foo=bar baz=1 cs4Label=Custom cs4=zzz
+Oct 4 09:15:00 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-ALLOW|Session allowed|1|rt=Oct 4 2026 09:15:00 dvchost=fw-edge01.example.edu src=10.0.0.4 dst=10.0.0.5 dpt=80 proto=UDP act=allow
+Oct 14 10:00:04 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TRAFFIC-ALLOW|Session allowed
+Oct 14 10:00:03 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|NEW-10|Unknown with escapes|Medium|rt=1791972003000 dvchost=fw-edge01.example.edu src=10.0.0.6 foo=a\=b\nc\\nd bar=back\\slash

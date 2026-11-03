@@ -1,0 +1,1 @@
+logstash_shared_glob: "{{ logbox_repo_root }}/logstash/shared/*.conf"

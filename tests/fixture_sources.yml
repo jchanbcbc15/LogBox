@@ -1,0 +1,25 @@
+# Extra log sources the functional test deploys next to the real three (tests/functional_test.py).
+# They read the synthetic fixtures in tests/fixtures/, write to the same indexes, and are removed again
+# by the test. Their agent.name starts with "logstash-fx-", which is how the test tells them apart.
+extra_log_sources:
+  - name: fx-syslog
+    source: syslog
+    dir: "{{ logbox_repo_root }}/tests/fixtures"
+    file: fn_syslog.log
+    assumed_year: 2026
+    heap: 256m
+  - name: fx-firewall
+    source: firewall
+    dir: "{{ logbox_repo_root }}/tests/fixtures"
+    file: fn_cef.log
+    heap: 256m
+  - name: fx-dlq
+    source: firewall
+    dir: "{{ logbox_repo_root }}/tests/fixtures"
+    file: fn_dlq.log
+    heap: 256m
+  - name: fx-proxy
+    source: proxy
+    dir: "{{ logbox_repo_root }}/tests/fixtures"
+    file: fn_proxy.csv
+    heap: 256m

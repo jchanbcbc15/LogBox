@@ -1,0 +1,2 @@
+Oct 14 12:00:09 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TEST-DLQ|Refused by Elasticsearch|3|rt=1791937660600 dvchost=fw-edge01.example.edu src=999.999.1.1 suser=fn.test
+Oct 14 12:00:10 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TEST-OK|Indexed normally|3|rt=1791937660601 dvchost=fw-edge01.example.edu src=192.0.2.12 suser=fn.test

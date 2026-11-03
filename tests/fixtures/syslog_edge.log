@@ -1,0 +1,9 @@
+this line is not syslog at all
+Feb 30 10:00:00 web01 sshd[1]: Failed password for root from 192.0.2.1 port 22 ssh2
+Oct 14 10:00:00 web01 CRON[123]: (root) CMD (run-parts /etc/cron.hourly)
+Oct 14 10:00:00 web01 CRON[123]: (root) CMD (run-parts /etc/cron.hourly)
+Oct 14 10:00:01 web01
+Oct 14 10:00:02 web01 foobar[9]: something novel that no family knows
+<13>1 not-a-time web01 app 1 - - broken 5424 time
+Oct 14 10:00:03 web01 portal-app[5]: ERROR boom
+  at com.example.Foo.bar(Foo.java:10)

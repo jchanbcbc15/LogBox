@@ -1,0 +1,16 @@
+# One playbook deploys the whole solution (R5): network and folders, the TLS certificates,
+# Elasticsearch with its index
+# templates and users, Kibana, Redis (only if a source routes to it), and one Logstash container per
+# entry in log_sources.
+# Running it a second time reports no changes (R14).
+- name: Deploy the log ingestion stack
+  hosts: all
+  gather_facts: true
+  roles:
+    - stack_base
+    - tls
+    - elasticsearch
+    - kibana
+    - role: redis
+      when: redis_deploy | bool
+    - logstash_instance

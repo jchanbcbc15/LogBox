@@ -1,0 +1,18 @@
+event_time,event_id,client_ip,username,display_name,http_method,url,status_code,bytes_sent,user_agent,referrer,category,notes
+2026-10-14T01:00:00.000Z,0000901,10.0.0.1,asmith,"Smith, Alex",GET,https://host.example.com:8443/files/archive.tar.gz?x=1#frag,200,1000,Agent/1.0,https://ref.example.com/,Education,port and fragment
+2026-10-14T01:01:00.000Z,0000902,,,,,,,,,,,
+2026-10-14T01:01:30.000Z,0000915,10.0.0.14,cjones,C Jones,GET,https://example.com/first,200,10,Agent/1.0,,News,FIRST row with this event_id (overwritten)
+2026-10-14T01:02:00.000Z,0000903,10.0.0.3,asmith,A Smith,GET,http://user:pw@host.example.com/x,200,10,Agent/1.0,-,News,userinfo
+2026-10-14T01:03:00.000Z,0000904,10.0.0.4,asmith,A Smith,GET,https://example.com,200,10,Agent/1.0,,News,no path
+2026-10-14T01:03:30.000Z,0000905,10.0.0.4,asmith,A Smith,GET,https://example.com/docs/Report.PDF,200,10,Agent/1.0,,News,upper-case extension
+2026-10-14T01:04:00.000Z,0000906,10.0.0.5,asmith,A Smith,GET,https://example.com/a,abc,n/a,Agent/1.0,,News,not numbers
+2026-02-30T00:00:00.000Z,0000907,10.0.0.6,asmith,A Smith,GET,https://example.com/a,200,10,Agent/1.0,,News,impossible date
+2026-10-14T01:05:00.000Z,0000908,10.0.0.7,asmith,A Smith,GET,https://example.com/a,200,10,Agent/1.0,,News,"never closed
+2026-10-14T01:06:00.000Z,0000909,10.0.0.8,asmith,A Smith,GET,https://example.com/a,200,10,Agent/1.0,,News,good row swallowed by the next one
+not-a-time,0000910,10.0.0.8,asmith,A Smith,GET,https://example.com/a,200,10,Agent/1.0,,News,bad first cell
+2026-10-14T01:07:00.000Z,0000911,10.0.0.9,asmith,A Smith,GET,https://example.com/a,200,10,Agent/1.0,,News,notes,extra cell
+2026-10-14T01:08:00.000Z,0000915,10.0.0.10,bjones,B Jones,GET,https://example.com/dup,200,10,Agent/1.0,,News,SECOND row with this event_id (this one wins)
+2026-10-14T01:09:00.000Z,,10.0.0.11,bjones,B Jones,GET,https://example.com/noid,200,10,Agent/1.0,,News,no event_id
+2026-10-14T01:10:00.000Z,0000912,10.0.0.12,bjones,B Jones,GET,https://example.com/b.txt,200,10,Agent/1.0,,News,"C:\Users\x\n \t ""quoted"" line one  
+line two  "
+2026-10-14T01:11:00.000Z,0000913,10.0.0.13,bjones,B Jones,GET,https://example.com/last,200,10,Agent/1.0,,News,last line has no line ending

@@ -1,0 +1,7 @@
+# Template only. The real file is ansible/group_vars/all/vault.yml, created and encrypted by
+# ansible/setup-secrets.sh with random passwords, and never committed (.gitignore).
+vault_es_elastic_password: "change-me"
+vault_logstash_writer_password: "change-me"
+vault_kibana_system_password: "change-me"
+# Only needed when a source uses destination: redis.
+vault_redis_password: "change-me"

@@ -1,0 +1,25 @@
+{
+  "index_patterns": ["logs-rejects"],
+  "priority": 500,
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "dynamic": false,
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "event": { "properties": {
+          "kind": { "type": "keyword" }, "dataset": { "type": "keyword" },
+          "original": { "type": "keyword", "index": false, "doc_values": false },
+          "created": { "type": "date" } } },
+        "error": { "properties": { "type": { "type": "keyword" }, "message": { "type": "match_only_text" } } },
+        "log": { "properties": { "file": { "properties": { "path": { "type": "keyword" } } } } },
+        "agent": { "properties": { "name": { "type": "keyword" } } },
+        "tags": { "type": "keyword" },
+        "{{ metadata_namespace }}": { "properties": { "metadata": { "properties": {
+          "reject": { "properties": { "stage": { "type": "keyword" } } },
+          "pipeline": { "properties": { "host": { "type": "keyword" } } },
+          "syslog": { "type": "object", "enabled": false } } } } }
+      }
+    }
+  }
+}

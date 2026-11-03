@@ -1,0 +1,8 @@
+# What the Logstash user may do (least privilege): create and write documents in logs-* (which includes
+# logs-rejects), plus read-only "monitor" at cluster level so the output can check the server. It cannot
+# read, delete or touch any other index, and cannot manage the cluster or security.
+logstash_writer_role_body:
+  cluster: ["monitor"]
+  indices:
+    - names: ["logs-*"]
+      privileges: ["create_index", "index"]

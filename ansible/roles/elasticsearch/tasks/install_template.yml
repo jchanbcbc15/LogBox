@@ -1,0 +1,30 @@
+# Install one index template from the repository. The file is rendered first (it names the metadata
+# namespace as the variable metadata_namespace). The SHA-1 of the RENDERED text is stored inside the template
+# (_meta.logbox_sha1), so changing the namespace or the file rewrites it; it is written only when it is missing
+# or differs. Checking the
+# stored marker, not a local file, also repairs a stack whose Elasticsearch data was wiped.
+- name: "Read the installed template {{ tpl_file | basename }}"
+  ansible.builtin.uri:
+    url: "{{ es_url }}/_index_template/{{ tpl_name }}"
+    status_code: [200, 404]
+    return_content: true
+  register: tpl_current
+  changed_when: false
+  vars:
+    tpl_name: "{{ tpl_file | basename | regex_replace('[.]json$', '') }}"
+
+- name: "Install the template {{ tpl_file | basename }}"
+  ansible.builtin.uri:
+    url: "{{ es_url }}/_index_template/{{ tpl_name }}"
+    method: PUT
+    body_format: json
+    body: "{{ tpl_body | combine({'_meta': {'logbox_sha1': tpl_sha}}) }}"
+    status_code: 200
+  when: tpl_installed_sha != tpl_sha
+  vars:
+    tpl_name: "{{ tpl_file | basename | regex_replace('[.]json$', '') }}"
+    tpl_body: "{{ lookup('ansible.builtin.template', tpl_file) | from_json }}"
+    tpl_sha: "{{ lookup('ansible.builtin.template', tpl_file) | hash('sha1') }}"
+    tpl_installed_sha: "{{ tpl_current.json.index_templates | default([]) | map(attribute='index_template._meta.logbox_sha1', default='') | first | default('') }}"
+  # The uri module never reports "changed" itself; this write only runs when something differs.
+  changed_when: true

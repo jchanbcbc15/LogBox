@@ -1,0 +1,8 @@
+event_time,event_id,client_ip,username,display_name,http_method,url,status_code,bytes_sent,user_agent,referrer,category,notes
+2026-10-14T12:00:07.000Z,0000990,10.9.9.9,fn.test,Fn Test,GET,https://example.com/x?token=tok999&lang=fr&password=pw1,200,10,Agent/1.0,https://ref.example.com/?api_key=K9&x=1,News,"login password=hunter2, then token=abc123"
+2026-10-14T12:00:08.000Z,0000991,10.9.9.9,fn.test,Fn Test,GET,https://example.com/y,200,10,Agent/1.0,,News,"Failed password for asmith; invalid token"
+2026-10-14T12:00:09.000Z,0000992,10.9.9.9,fn.test,Fn Test,GET,https://example.com/z,200,10,Agent/1.0,,News,"line one
+line two
+line three"
+2026-10-14T12:00:10.000Z,0000993,10.9.9.9,fn.test,Fn Test,GET,https://example.com/broken,200,10,Agent/1.0,,News,"never closed
+2026-10-14T12:00:11.000Z,0000994,10.9.9.9,fn.test,Fn Test,GET,https://example.com/after,200,10,Agent/1.0,,News,record after the broken one

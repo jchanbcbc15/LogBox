@@ -1,0 +1,2 @@
+# Elasticsearch role: the container, the index templates, the Logstash role and users.
+elasticsearch_templates_glob: "{{ logbox_repo_root }}/elasticsearch/templates/*.json"

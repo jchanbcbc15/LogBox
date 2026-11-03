@@ -1,0 +1,4 @@
+Oct 14 12:00:05 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TEST-1|Redaction test|3|rt=1791937660482 dvchost=fw-edge01.example.edu src=192.0.2.9 suser=fn.test msg=Login ok password\=hunter2 token\=abc123 for user cs1Label=Rule cs1=R-9 request=https://www.example.edu/x?token\=tok999&lang\=fr
+Oct 14 12:00:06 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TEST-2|Redaction control|3|rt=1791937660483 dvchost=fw-edge01.example.edu src=192.0.2.10 suser=fn.test msg=Failed password for admin and invalid token cs1Label=Rule cs1=R-9
+Oct 14 12:00:07 fw-edge01 this is not a CEF line
+Oct 14 12:00:08 fw-edge01 CEF:0|ExampleSec|EdgeGuard NGFW|4.2.1|TEST-3|Record after the broken one|3|rt=1791937660500 dvchost=fw-edge01.example.edu src=192.0.2.11 suser=fn.test

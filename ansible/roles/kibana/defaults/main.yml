@@ -1,0 +1,19 @@
+# Kibana data views (the saved "index patterns" Discover reads), created by the playbook so a fresh
+# deployment opens in Discover with data visible and nothing to click together by hand.
+kibana_url: "http://127.0.0.1:{{ kibana_port }}"
+
+# One view over every source, one per entry in log_sources (index logs-logbox.<name>, which holds only
+# that source's fields), and one for the rejects. The ids are fixed so a re-run finds and compares them.
+kibana_data_views: >-
+  {%- set views = [{'id': 'logbox-logs-all', 'name': 'Logbox logs (all sources)', 'title': 'logs-logbox.*', 'time_field': '@timestamp'}] -%}
+  {%- for s in log_sources -%}
+  {%- set _ = views.append({'id': 'logbox-logs-' ~ s.name, 'name': 'Logbox ' ~ s.name, 'title': 'logs-logbox.' ~ s.name, 'time_field': '@timestamp'}) -%}
+  {%- endfor -%}
+  {%- set _ = views.append({'id': 'logbox-rejects', 'name': 'Logbox rejects', 'title': 'logs-rejects', 'time_field': '@timestamp'}) -%}
+  {{ views }}
+
+kibana_default_data_view: logbox-logs-all
+
+# Discover opens on "last 15 minutes", which is empty for a sample file whose records are weeks old.
+# The playbook sets a wide default window instead (an owner-visible choice; see design-direction.md).
+kibana_default_time_range: { from: "now-5y", to: "now" }

@@ -1,0 +1,11 @@
+http.host: "0.0.0.0"
+# One worker by default. Occurrence counting is in 25-occurrence.conf.
+# so record_seq follows the file and the document ids are the same on every run.
+pipeline.workers: 1
+pipeline.batch.size: 125
+# No automatic reload: a config change is a deliberate container restart, never a surprise.
+config.reload.automatic: false
+# Dead letter queue: where Logstash puts an event Elasticsearch refuses (for example a mapping
+# conflict). The functional test expects it to stay empty; if it does not, the file shows why.
+dead_letter_queue.enable: true
+dead_letter_queue.max_bytes: 64mb

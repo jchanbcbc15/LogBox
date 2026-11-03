@@ -1,0 +1,2 @@
+Oct 14 12:10:01 demo01 app[1]: login ok user=jdoe password=Summer2026!
+Oct 14 12:10:02 demo01 app[2]: session started user=jdoe token=9f2c7a41d0b84e6aa3c1

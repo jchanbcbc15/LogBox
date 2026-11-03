@@ -1,0 +1,91 @@
+# Tracer: Elasticsearch + one Logstash instance per source (syslog, firewall, proxy).
+# Versions are pinned (decision: exact tags, same 8.x patch for all three).
+# Ports are bound to 127.0.0.1 only (decision).
+name: logbox-tracer
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.22
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # Security on from the start (password in tracer/.env, not in the repository); TLS is a later step.
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${ES_PASSWORD}
+    ports:
+      # 127.0.0.1 only: not reachable from other machines (decision, security table).
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:$$ELASTIC_PASSWORD localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  logstash-syslog:
+    image: docker.elastic.co/logstash/logstash:8.19.22
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+      - LOGSTASH_INSTANCE=logstash-syslog
+      - PIPELINE_HOST=${PIPELINE_HOST:-tracer-host}
+      - ES_URL=http://elasticsearch:9200
+      - ES_USER=elastic
+      - ES_PASSWORD=${ES_PASSWORD}
+      - ASSUMED_YEAR=${ASSUMED_YEAR:?set ASSUMED_YEAR}
+      - SOURCE_TIMEZONE=UTC
+      - INPUT_PATH=${INPUT_PATH:-/data/01_syslog_unstructured.log}
+    volumes:
+      - ./run/syslog/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ../samples:/data:ro
+      - ls-syslog-data:/usr/share/logstash/data
+
+  logstash-firewall:
+    image: docker.elastic.co/logstash/logstash:8.19.22
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+      - LOGSTASH_INSTANCE=logstash-firewall
+      - PIPELINE_HOST=${PIPELINE_HOST:-tracer-host}
+      - ES_URL=http://elasticsearch:9200
+      - ES_USER=elastic
+      - ES_PASSWORD=${ES_PASSWORD}
+      - SOURCE_TIMEZONE=${FW_SOURCE_TIMEZONE:-UTC}
+      - INPUT_PATH=${FW_INPUT_PATH:-/data/03_firewall_cef.log}
+    volumes:
+      - ./run/firewall/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ../samples:/data:ro
+      - ls-firewall-data:/usr/share/logstash/data
+
+  logstash-proxy:
+    image: docker.elastic.co/logstash/logstash:8.19.22
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx512m
+      - LOGSTASH_INSTANCE=logstash-proxy
+      - PIPELINE_HOST=${PIPELINE_HOST:-tracer-host}
+      - ES_URL=http://elasticsearch:9200
+      - ES_USER=elastic
+      - ES_PASSWORD=${ES_PASSWORD}
+      # No ASSUMED_YEAR and no SOURCE_TIMEZONE: the proxy time is UTC with a Z.
+      - INPUT_PATH=${PX_INPUT_PATH:-/data/04_proxy_export.csv}
+    volumes:
+      - ./run/proxy/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ../samples:/data:ro
+      - ls-proxy-data:/usr/share/logstash/data
+
+volumes:
+  es-data:
+  ls-syslog-data:
+  ls-firewall-data:
+  ls-proxy-data:

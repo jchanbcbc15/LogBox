@@ -1,0 +1,7 @@
+# One Logstash container per log_sources entry (see instance.yml).
+- name: Deploy one Logstash instance per log source
+  ansible.builtin.include_tasks: instance.yml
+  loop: "{{ all_log_sources }}"
+  loop_control:
+    loop_var: src
+    label: "{{ src.name }}"

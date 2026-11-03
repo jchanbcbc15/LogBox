@@ -1,0 +1,68 @@
+# Certificates for the Elasticsearch HTTP port. They are prepared in BOTH modes (es_tls only decides whether they are used;
+# Logstash needs the CA file to exist either way). A private CA is created once and
+# issues one certificate for Elasticsearch. openssl comes from the Elasticsearch image, so the target needs
+# nothing but Docker. Where the files go:
+#   volume logbox-certs-ca         CA certificate AND CA private key. Used only by this one-off container;
+#                               no service mounts it.
+#   volume logbox-certs-es         Elasticsearch's key and certificate (+ CA certificate). Mounted by Elasticsearch only.
+#   volume logbox-certs-ca-public  the CA certificate alone. Mounted read-only by Logstash and Kibana.
+#   {{ es_certs_dir }}/ca.crt   the CA certificate for curl, the demo script, the test and this playbook.
+# Re-running changes nothing. If es_tls_dns or es_tls_ips change, a new Elasticsearch certificate is issued
+# from the same CA (Logstash and Kibana keep trusting it).
+- name: Create the certificate folder on the target
+  ansible.builtin.file:
+    path: "{{ es_certs_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create the certificate volumes
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: present
+  loop: [logbox-certs-ca, logbox-certs-es, logbox-certs-ca-public]
+
+- name: Create the CA and the Elasticsearch certificate if they are missing or the names changed
+  community.docker.docker_container:
+    name: logbox-certgen
+    image: "{{ elasticsearch_image }}"
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -eu
+        NAMES="dns=$TLS_DNS ips=$TLS_IPS"
+        if [ -f /es/es.crt ] && [ -f /es/es.key ] && [ -f /pub/ca.crt ] && [ -f /host/ca.crt ] && [ "$(cat /es/names.txt 2>/dev/null)" = "$NAMES" ]; then
+          echo UNCHANGED; exit 0
+        fi
+        if [ ! -f /ca/ca.key ]; then
+          openssl req -x509 -newkey rsa:4096 -nodes -days 3650 -subj "/CN=Logbox log ingestion demo CA" \
+            -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -addext "subjectKeyIdentifier=hash" -keyout /ca/ca.key -out /ca/ca.crt 2>/dev/null
+          chmod 600 /ca/ca.key
+        fi
+        SAN=""
+        for n in $(echo "$TLS_DNS" | tr ',' ' '); do SAN="$SAN,DNS:$n"; done
+        for i in $(echo "$TLS_IPS" | tr ',' ' '); do SAN="$SAN,IP:$i"; done
+        printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nbasicConstraints=critical,CA:FALSE\nauthorityKeyIdentifier=keyid\n' "${SAN#,}" > /tmp/ext.cnf
+        openssl req -newkey rsa:2048 -nodes -subj "/CN=elasticsearch" -keyout /es/es.key -out /tmp/es.csr 2>/dev/null
+        openssl x509 -req -in /tmp/es.csr -CA /ca/ca.crt -CAkey /ca/ca.key -CAcreateserial -days 825 \
+          -extfile /tmp/ext.cnf -out /es/es.crt 2>/dev/null
+        cp /ca/ca.crt /es/ca.crt; cp /ca/ca.crt /pub/ca.crt; cp /ca/ca.crt /host/ca.crt
+        echo "$NAMES" > /es/names.txt
+        chown -R 1000:0 /es; chmod 750 /es; chmod 600 /es/es.key; chmod 644 /es/es.crt /es/ca.crt
+        chmod 755 /pub; chmod 644 /pub/ca.crt /host/ca.crt
+        echo GENERATED
+    env:
+      TLS_DNS: "{{ es_tls_dns | join(',') }}"
+      TLS_IPS: "{{ es_tls_ips | join(',') }}"
+    volumes:
+      - "logbox-certs-ca:/ca"
+      - "logbox-certs-es:/es"
+      - "logbox-certs-ca-public:/pub"
+      - "{{ es_certs_dir }}:/host"
+    detach: false
+    cleanup: true
+    output_logs: true
+  register: certgen
+  changed_when: "'GENERATED' in (certgen.container.Output | default(''))"
+  failed_when: "certgen.status | default(1) | int != 0"

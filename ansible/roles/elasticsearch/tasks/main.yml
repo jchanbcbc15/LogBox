@@ -1,0 +1,168 @@
+# tasks/main.yml — start one Elasticsearch node and prepare it for Logstash and Kibana.
+#
+# This file:
+#   creates the data volume and runs logbox-elasticsearch (single node, security on,
+#     HTTP port 9200 on 127.0.0.1 only)
+#   waits until the cluster answers
+#   installs index templates before the first document
+#   creates the empty logs-rejects index
+#   creates the Logstash writer role and user, and sets the kibana_system password
+#
+# TLS on the HTTP port uses the server certificate from the tls role (when es_tls is
+# true). Setup API calls use the elastic user from the vault. A second playbook run
+# with the same inputs reports changed=0.
+- name: Create the Elasticsearch data volume
+  community.docker.docker_volume:
+    name: logbox-es-data
+    state: present
+
+- name: Run Elasticsearch (single node, security on)
+  community.docker.docker_container:
+    name: logbox-elasticsearch
+    image: "{{ elasticsearch_image }}"
+    state: started
+    restart_policy: unless-stopped
+    # Hardening (spec 9.1): no privilege gain, memory capped above the Java heap, process count capped.
+    security_opts: ["no-new-privileges:true"]
+    memory: "{{ es_memory }}"
+    memory_swap: "{{ es_memory }}"
+    pids_limit: 4096
+    env: "{{ es_env | combine(es_env_tls if es_tls | bool else {}) }}"
+    published_ports:
+      # 127.0.0.1 only: not reachable from other machines.
+      - "127.0.0.1:{{ elasticsearch_port }}:9200"
+    volumes: "{{ ['logbox-es-data:/usr/share/elasticsearch/data'] + (['logbox-certs-es:/usr/share/elasticsearch/config/certs:ro'] if es_tls | bool else []) }}"
+    networks:
+      - name: "{{ docker_network_name }}"
+        aliases: [elasticsearch]
+  vars:
+    es_env:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms{{ elasticsearch_heap }} -Xmx{{ elasticsearch_heap }}"
+      # Security is on from the start; the password is the vault's.
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "{{ es_tls | bool | lower }}"
+      ELASTIC_PASSWORD: "{{ vault_es_elastic_password }}"
+    # HTTPS on the HTTP port: the files were made by role "tls" and are mounted read-only below.
+    es_env_tls:
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es.key
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es.crt
+      xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
+  no_log: true
+
+# Everything below talks to Elasticsearch as the setup user "elastic". The Logstash and Kibana users
+# are created here, so the passwords of those two never leave the vault except into their containers.
+- name: Set up Elasticsearch through its API
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: elastic
+      url_password: "{{ vault_es_elastic_password }}"
+      force_basic_auth: true
+      ca_path: "{{ es_ca_file }}"
+  block:
+    - name: Wait until Elasticsearch answers
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_cluster/health?wait_for_status=yellow&timeout=5s"
+        status_code: 200
+      register: es_health
+      until: es_health.status == 200
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    # Index templates must exist before the first document, or field types would be guessed.
+    - name: Install the index templates
+      ansible.builtin.include_tasks: install_template.yml
+      loop: "{{ query('ansible.builtin.fileglob', elasticsearch_templates_glob) | sort }}"
+      loop_control:
+        loop_var: tpl_file
+        label: "{{ tpl_file | basename }}"
+
+    # The rejects index is created empty, so the Kibana "Logbox rejects" view works before the first reject
+    # (Elasticsearch would otherwise create the index only when a record is first rejected).
+    - name: Check whether the rejects index exists
+      ansible.builtin.uri:
+        url: "{{ es_url }}/logs-rejects"
+        method: HEAD
+        status_code: [200, 404]
+      register: rejects_index
+      changed_when: false
+
+    - name: Create the empty rejects index
+      ansible.builtin.uri:
+        url: "{{ es_url }}/logs-rejects"
+        method: PUT
+        status_code: 200
+      when: rejects_index.status == 404
+      # The uri module never reports "changed" itself; this write only runs when the index is missing.
+      changed_when: true
+
+    - name: Read the Logstash role
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/role/{{ logstash_writer_role }}"
+        status_code: [200, 404]
+        return_content: true
+      register: role_current
+      changed_when: false
+
+    - name: Create or update the Logstash role
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/role/{{ logstash_writer_role }}"
+        method: PUT
+        body_format: json
+        body: "{{ logstash_writer_role_body | combine({'metadata': {'logbox_sha1': logstash_writer_role_body | to_json(sort_keys=True) | hash('sha1')}}) }}"
+        status_code: 200
+      when: >-
+        (role_current.json | default({}) | dict2items | map(attribute='value.metadata.logbox_sha1', default='') | first | default(''))
+        != (logstash_writer_role_body | to_json(sort_keys=True) | hash('sha1'))
+
+    # A user is checked by logging in with the password from the vault; the user is (re)written only
+    # when that fails, so a second run changes nothing.
+      # The uri module never reports "changed" itself; this write only runs when something differs.
+      changed_when: true
+    - name: Check whether the Logstash user can log in
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/_authenticate"
+        url_username: "{{ logstash_writer_user }}"
+        url_password: "{{ vault_logstash_writer_password }}"
+        status_code: [200, 401]
+      register: writer_login
+      changed_when: false
+      no_log: true
+
+    - name: Create the Logstash user
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/user/{{ logstash_writer_user }}"
+        method: PUT
+        body_format: json
+        body:
+          password: "{{ vault_logstash_writer_password }}"
+          roles: ["{{ logstash_writer_role }}"]
+        status_code: 200
+      when: writer_login.status == 401
+      no_log: true
+      # The uri module never reports "changed" itself; this write only runs when something differs.
+      changed_when: true
+
+    - name: Check whether the Kibana system user can log in
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/_authenticate"
+        url_username: kibana_system
+        url_password: "{{ vault_kibana_system_password }}"
+        status_code: [200, 401]
+      register: kibana_login
+      changed_when: false
+      no_log: true
+
+    - name: Set the Kibana system user's password
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_security/user/kibana_system/_password"
+        method: POST
+        body_format: json
+        body:
+          password: "{{ vault_kibana_system_password }}"
+        status_code: 200
+      when: kibana_login.status == 401
+      no_log: true
+      # The uri module never reports "changed" itself; this write only runs when something differs.
+      changed_when: true

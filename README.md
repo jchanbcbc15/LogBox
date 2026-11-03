@@ -53,7 +53,7 @@ bash setup-secrets.sh                                   # creates vault-password
 
 `setup-secrets.sh` generates four random passwords (Elasticsearch `elastic`, the Logstash writer, the Kibana
 system user, and Redis, which is used only if a source routes to it) and keeps them in an Ansible Vault file. Neither file is committed. It never overwrites existing
-files. If you delete them, also delete the Elasticsearch volume (`demo/demo.py reset --yes`), because
+files. If you delete them, also delete the Elasticsearch volume (`python3 demo/demo.py reset --yes`), because
 Elasticsearch keeps the passwords it was first started with.
 
 Read the Kibana login password when you need it:
@@ -87,14 +87,14 @@ To keep the files somewhere other than `samples/`, pass the folder when you run 
 
 ```bash
 cd ~/proj/LogIngestion
-demo/demo.py check                          # tools, secrets and sample files in place?
-demo/demo.py up                             # Elasticsearch and Kibana only
-demo/demo.py ingest syslog                  # deploy Logstash for one sample, wait, count, run the test
-demo/demo.py ingest firewall
-demo/demo.py ingest proxy
-demo/demo.py find syslog --record 5         # show one event and the exact Kibana queries that find it
-demo/demo.py all                            # up + all three samples
-demo/demo.py reset --yes                    # remove containers, volumes, network and working folder
+python3 demo/demo.py check                          # tools, secrets and sample files in place?
+python3 demo/demo.py up                             # Elasticsearch and Kibana only
+python3 demo/demo.py ingest syslog                  # deploy Logstash for one sample, wait, count, run the test
+python3 demo/demo.py ingest firewall
+python3 demo/demo.py ingest proxy
+python3 demo/demo.py find syslog --record 5         # show one event and the exact Kibana queries that find it
+python3 demo/demo.py all                            # up + all three samples
+python3 demo/demo.py reset --yes                    # remove containers, volumes, network and working folder
 ```
 
 Add `--samples /path/to/folder` to `check`, `up`, `ingest` and `all` if the files are not in `samples/`.
@@ -154,7 +154,7 @@ Notes:
 - `event.original` is stored but not indexed, so you cannot search the raw line itself. Search a parsed field
   or `message`. For a proxy row use `event.id`.
 - Typing a field name in the search bar offers autocomplete for fields and values.
-- `demo/demo.py find <source>` prints the query for a real record of your files, plus a link that
+- `python3 demo/demo.py find <source>` prints the query for a real record of your files, plus a link that
   opens Discover with the query filled in.
 
 Command-line check without Kibana:
@@ -176,7 +176,7 @@ The CA certificate you need for `curl` is `~/logbox/certs/ca.crt`. The demo scri
 If TLS gets in the way during a demo, run everything over plain http (authentication stays on):
 
 ```bash
-ansible-playbook site.yml -e es_tls=false      # or:  demo/demo.py ingest proxy --no-tls
+ansible-playbook site.yml -e es_tls=false      # or:  python3 demo/demo.py ingest proxy --no-tls
 ansible-playbook site.yml                      # back to TLS (the default)
 ```
 
@@ -220,17 +220,34 @@ To go back, run the playbook again without `default_destination`.
 
 ## 6. Tests
 
+The suite needs Elasticsearch up. If a Logstash instance (or the rest of the stack) is already running, reset
+first so this clone's vault and containers match, then start Elasticsearch and Kibana, then run the test:
+
 ```bash
 cd ~/proj/LogIngestion
-python3 tests/functional_test.py                  # whole suite, about 3 minutes, needs the samples and the running stack
-python3 tests/functional_test.py --only proxy     # real-sample checks for one sample
-python3 tests/functional_test.py --skip-fixtures  # skip the synthetic fixtures
+python3 demo/demo.py reset --yes
+python3 demo/demo.py up
+python3 tests/functional_test.py
 ```
 
-It checks record counts against an independent count of the files, UTC timestamps, ECS names only, multi-line
-proxy notes, redaction, deliberately broken records landing in `logs-rejects`, the dead letter queue,
-security basics, Kibana data views, a second playbook run reporting no changes, and re-ingest. The synthetic
-fixtures in `tests/fixtures/` are committed; they contain no real data.
+With no flags, the script runs the whole suite (about 3 minutes). It checks record counts against an independent
+count of the files, UTC timestamps, ECS names only, multi-line proxy notes, redaction, deliberately broken records
+landing in `logs-rejects`, the dead letter queue, security basics, Kibana data views, a second playbook run reporting
+no changes, and re-ingest. The private samples in `samples/` are required for the real-source counts.
+
+`--only proxy` (or `syslog` or `firewall`) stops after the real-sample checks for that one source: document count,
+rejects, timestamps, origin fields, empty DLQ. It does not run mapping, security, Kibana, idempotence, re-ingest, or
+the synthetic fixtures. That is the same slice `python3 demo/demo.py ingest proxy` prints after ingest.
+
+`--skip-fixtures` runs everything except the synthetic files in `tests/fixtures/` (`fn_syslog.log`, `fn_cef.log`,
+`fn_dlq.log`, `fn_proxy.csv`). Those committed files (no real data) are deployed as extra Logstash sources to prove
+redaction, a bad record per source, occurrence numbers, multi-line proxy notes, and a record Elasticsearch refuses
+(DLQ). Skipping them avoids extra containers and is enough when you only care that the three real sources look right.
+
+```bash
+python3 tests/functional_test.py --only proxy
+python3 tests/functional_test.py --skip-fixtures
+```
 
 ### If a record is refused by Elasticsearch (dead letter queue)
 
@@ -245,7 +262,7 @@ demo/dlq-inspect.sh firewall          # print every refused event with Elasticse
 ```
 
 For each entry: read the `reason`, decide whether the source value is bad (nothing to fix; keep the raw line as the
-finding) or our mapping is wrong (fix it, redeploy), re-run the source (`demo/demo.py ingest <source>`; ids make this
+finding) or our mapping is wrong (fix it, redeploy), re-run the source (`python3 demo/demo.py ingest <source>`; ids make this
 safe), then clear the DLQ: `docker rm -f logbox-logstash-<source> && docker volume rm logbox-ls-<source>-data` and run the playbook
 again. Details in `_bmad-output/initiative-log-ingestion-in-a-box/error-handling.md`.
 
